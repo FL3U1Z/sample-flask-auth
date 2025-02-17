@@ -1,3 +1,4 @@
+import bcrypt
 from flask import Flask, request, jsonify
 from database import db
 from models.user import User
@@ -5,7 +6,7 @@ from flask_login import LoginManager, login_user, current_user, logout_user, log
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = "your_secret_key"
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:admin123@127.0.0.1:3306/flask-crud'
 
 login_manager = LoginManager()
 db.init_app(app)
@@ -25,7 +26,7 @@ def login():
 
     if username and password:
        user = User.query.filter_by(username=username).first()
-       if user and user.password == password:
+       if user and bcrypt.checkpw(str.encode(password), str.encode(user.password)):
             login_user(user)
             print(current_user.is_authenticated)
             return jsonify({"message":"Login realizado com suscesso"})
@@ -53,6 +54,9 @@ def update_user(id_user):
     data = request.json
     user = User.query.get(id_user)
     
+    if id_user != current_user.id and current_user.role == 'user':
+        return jsonify({"message":f"Usuário não há permissão para essa ação"}), 403
+    
     if user:
         user.password = data.get("password")
         db.session.commit()
@@ -65,6 +69,8 @@ def update_user(id_user):
 def delete_user(id_user):
     user = User.query.get(id_user)
     
+    if current_user.role != 'admin':
+        return jsonify({"message": "Operação não permitida!"}), 403
     if id_user == current_user.id:
         return jsonify({"message":f"Deleção não permitida"}), 403
     if user :
@@ -83,14 +89,13 @@ def create_user():
     password = data.get("password")
     
     if username and password:
-        user = User(username=username, password=password)
+        hashed_password = bcrypt.hashpw(str.encode(password), bcrypt.gensalt())
+        user = User(username=username, password=hashed_password, role='user')
         db.session.add(user)
         db.session.commit()
         return jsonify({"message":"Usuário Cadastrado com sucesso!"})
     return jsonify({"message":"Dados Inválidos"}), 400
 
-@app.route("/hello-world", methods=["GET"])
-def hello_world():
     return "Hello World"
 
 if __name__ == '__main__':
